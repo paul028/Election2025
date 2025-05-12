@@ -1,16 +1,36 @@
 import requests
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 
-def download_json_files(start_number, end_number, base_url, directory="."):
+def download_file(number, base_url, directory):
+    """Downloads a single JSON file."""
+    filename = f"{number:08d}.json"
+    url = f"{base_url}{filename}"
+    filepath = os.path.join(directory, filename)
+    try:
+        response = requests.get(url)
+        response.raise_for_status()  # Raise an exception for bad status codes
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(response.text)
+        print(f"Downloaded: {url} to {filepath}")
+    except requests.exceptions.RequestException as e:
+        print(f"Error downloading {url}: {e}")
+    except Exception as e:
+        print(f"An unexpected error occurred while processing {url}: {e}")
+    finally:
+        time.sleep(0.1)  # Add a delay after each request
+
+def download_json_files_parallel(start_number, end_number, base_url, directory=".", max_workers=5):
     """
-    Downloads JSON files from a given base URL, iterating through a range of numbers.
+    Downloads JSON files in parallel from a given base URL, iterating through a range of numbers.
 
     Args:
         start_number (int): The starting number for the filename.
         end_number (int): The ending number for the filename.
         base_url (str): The base URL of the JSON files (without the filename).
         directory (str, optional): The directory to save the downloaded files. Defaults to the current directory.
+        max_workers (int, optional): The maximum number of concurrent threads. Defaults to 5.
 
     Returns:
         None: The function downloads and saves files; it doesn't return a value.
@@ -23,49 +43,27 @@ def download_json_files(start_number, end_number, base_url, directory="."):
             print(f"Error creating directory {directory}: {e}")
             return  # Stop if directory creation fails
 
-    # Loop through the numbers
-    for i in range(start_number, end_number + 1):
-        # Format the filename
-        filename = f"{i:08d}.json"  # Ensure 8 digits with leading zeros
-        url = f"{base_url}{filename}"
-
-        try:
-            # Send a GET request to the URL
-            response = requests.get(url)
-
-            # Check if the request was successful (status code 200)
-            if response.status_code == 200:
-                # Construct the full file path
-                filepath = os.path.join(directory, filename)
-
-                # Write the content to a file
-                with open(filepath, "w", encoding="utf-8") as f:
-                    f.write(response.text)
-                print(f"Downloaded: {url} to {filepath}")
-            elif response.status_code == 404:
-                print(f"File not found: {url}") # Print 404 error
-            else:
-                print(f"Error {response.status_code} downloading {url}")
-
-            # Add a delay to be respectful to the server (optional, but recommended)
-            time.sleep(0.1)  # 0.1 second delay
-
-        except requests.exceptions.RequestException as e:
-            print(f"Error downloading {url}: {e}")
-        except Exception as e:
-            print(f"An unexpected error occurred while processing {url}: {e}")
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [executor.submit(download_file, i, base_url, directory)
+                   for i in range(start_number, end_number + 1)]
+        # Optionally, you can wait for all tasks to complete and handle exceptions
+        # for future in futures:
+        #     try:
+        #         future.result()
+        #     except Exception as e:
+        #         print(f"A thread raised an exception: {e}")
 
 if __name__ == "__main__":
     # Define the base URL and the range of numbers
-    base_url = "https://2025electionresults.comelec.gov.ph/data/er/142/"
-    #142 = City of San Jose Delmonte Bulacan
-    #pricint number
-    start_number = 14200000
-    end_number = 14299999
+    base_url = "https://2025electionresults.comelec.gov.ph/data/er/740/"
+    #740 = City of Marikina
+    #precinct number
+    start_number = 74020000
+    end_number = 74029999
 
     # Specify the directory to save the files (optional)
-    save_directory = "comelec_data"  # Create a folder named "comelec_data"
+    save_directory = "marikina_city"  # Create a folder named "marikina_city"
 
-    # Call the function to download the files
-    download_json_files(start_number, end_number, base_url, save_directory)
+    # Call the function to download the files in parallel
+    download_json_files_parallel(start_number, end_number, base_url, save_directory, max_workers=10) # Increased max_workers
     print("Download process complete.")
